@@ -1,15 +1,20 @@
 # app/factory.py
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.config import Settings
+from app.db.database import Base, engine
 
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     # Startup logic
-#     await init_db()
-#     yield
-#     # Shutdown logic
-#     pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: create all tables (dev only — use Alembic in production)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Shutdown: clean up engine
+    await engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
         debug=settings.DEBUG,
-        # lifespan=lifespan,
+        lifespan=lifespan,
     )
 
     # # Register routers

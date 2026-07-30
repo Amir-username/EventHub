@@ -14,9 +14,11 @@ class Settings(BaseSettings):
     app_name: str = "EventHub"
     debug: bool = False
 
-    # Database
-    database_url: str = "sqlite:///./app.db"
+    database_url: str = "sqlite+aiosqlite:///./app.db"
     db_pool_size: int = 10
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
 
     # Security
     secret_key: str
