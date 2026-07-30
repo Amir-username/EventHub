@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-29  
-**Deciders:** Backend Team
 
 ### Context
 
