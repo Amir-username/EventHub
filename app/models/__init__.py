@@ -1,4 +1,14 @@
+from app.models.api_key import ApiKey as ApiKey
 from app.models.base import Base as Base
+from app.models.event import Event as Event
+from app.models.event import EventStatus as EventStatus
+from app.models.feature_flag import FeatureFlag as FeatureFlag
+from app.models.order import Order as Order
+from app.models.order import OrderStatus as OrderStatus
+from app.models.reservation import Reservation as Reservation
+from app.models.reservation import ReservationStatus as ReservationStatus
+from app.models.ticket_type import TicketType as TicketType
 from app.models.user import User as User
 from app.models.user import UserRole as UserRole
 from app.models.venue import Venue as Venue
+from app.models.webhook_event import WebhookEvent as WebhookEvent

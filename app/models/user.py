@@ -1,10 +1,16 @@
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.event import Event
+    from app.models.reservation import Reservation
+    from app.models.venue import Venue
 
 
 class UserRole(str, enum.Enum):
@@ -29,4 +35,11 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
         nullable=False,
+    )
+
+    # Relationships
+    venues: Mapped[list["Venue"]] = relationship("Venue", back_populates="creator")
+    events: Mapped[list["Event"]] = relationship("Event", back_populates="creator")
+    reservations: Mapped[list["Reservation"]] = relationship(
+        "Reservation", back_populates="user"
     )
