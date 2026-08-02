@@ -1,5 +1,4 @@
 from app.models.api_key import ApiKey as ApiKey
-from app.models.base import Base as Base
 from app.models.event import Event as Event
 from app.models.event import EventStatus as EventStatus
 from app.models.feature_flag import FeatureFlag as FeatureFlag

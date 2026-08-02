@@ -1,13 +1,14 @@
 services:
   api:
     build:
-      context: ..
+      context: .
       dockerfile: docker/api.Dockerfile
     container_name: eventhub-api
+   
     ports:
       - "8000:8000"
     env_file:
-      - ../.env
+      - /.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/eventhub
       - REDIS_URL=redis://redis:6379/0
@@ -23,7 +24,7 @@ services:
     command: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: eventhub-postgres
     environment:
       POSTGRES_USER: postgres

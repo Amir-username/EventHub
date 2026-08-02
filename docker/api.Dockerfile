@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------- Builder stage ----------
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -12,7 +12,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project
 
 # ---------- Runtime stage ----------
 FROM python:3.14-slim-bookworm AS runtime
@@ -27,6 +27,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 COPY app/ ./app/
 COPY main.py .
+COPY alembic.ini .
+COPY alembic/ ./alembic/
 
 EXPOSE 8000
 

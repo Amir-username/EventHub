@@ -14,3 +14,8 @@ dependencies = [
     "ruff>=0.16.0",
     "sqlalchemy>=2.0.51",
 ]
+
+[dependency-groups]
+dev = [
+    "alembic>=1.18.5",
+]
