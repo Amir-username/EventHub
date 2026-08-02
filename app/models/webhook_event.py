@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -14,4 +14,7 @@ class WebhookEvent(Base):
         String(255), unique=True, nullable=False
     )
     payload: Mapped[str] = mapped_column(Text, nullable=False)
-    processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

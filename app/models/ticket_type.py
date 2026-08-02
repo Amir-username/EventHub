@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -22,8 +22,14 @@ class TicketType(Base):
     total_quantity: Mapped[int] = mapped_column(nullable=False)
     reserved_quantity: Mapped[int] = mapped_column(nullable=False, default=0)
     sold_quantity: Mapped[int] = mapped_column(nullable=False, default=0)
-    sales_start_at: Mapped[datetime] = mapped_column(nullable=False)
-    sales_end_at: Mapped[datetime] = mapped_column(nullable=False)
+    sales_start_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    sales_end_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
 
     # Relationships
     event: Mapped["Event"] = relationship("Event", back_populates="ticket_types")

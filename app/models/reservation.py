@@ -2,7 +2,7 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy import DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -37,8 +37,12 @@ class Reservation(Base):
     idempotency_key: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         nullable=False,
     )

@@ -2,7 +2,7 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, String
+from sqlalchemy import DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -33,6 +33,7 @@ class User(Base):
         default=UserRole.CUSTOMER,
     )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),  # ← ADD THIS
         default=lambda: datetime.now(UTC),
         nullable=False,
     )

@@ -2,7 +2,7 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -26,8 +26,14 @@ class Event(Base):
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    starts_at: Mapped[datetime] = mapped_column(nullable=False)
-    ends_at: Mapped[datetime] = mapped_column(nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    ends_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
     status: Mapped[EventStatus] = mapped_column(
         Enum(EventStatus, name="event_status_enum", create_type=True),
         nullable=False,
@@ -35,6 +41,7 @@ class Event(Base):
     )
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
