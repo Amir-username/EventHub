@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     secret_key: str
     access_token_expire_minutes: int = 30
 
+    # RSA Keys (optional: load from env vars directly)
+    rsa_private_key: str | None = None
+    rsa_public_key: str | None = None
+
+    # Or load from files
+    rsa_private_key_path: str = "./scripts/private_key.pem"
+    rsa_public_key_path: str = "./scripts/public_key.pem"
+
     # External APIs
     api_key: str | None = None
 
