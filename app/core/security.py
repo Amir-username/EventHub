@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -6,6 +7,9 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
+
+# Default to ./scripts for local dev, override in Docker
+KEYS_DIR = "./scripts/"
 
 
 def hash_password(plain: str) -> str:
@@ -25,12 +29,12 @@ def needs_rehash(hashed: str) -> bool:
 
 
 def _load_private_key() -> bytes:
-    with open("private_key.pem", "rb") as f:
+    with open(os.path.join(KEYS_DIR, "private_key.pem"), "rb") as f:
         return f.read()
 
 
 def _load_public_key() -> bytes:
-    with open("public_key.pem", "rb") as f:
+    with open(os.path.join(KEYS_DIR, "public_key.pem"), "rb") as f:
         return f.read()
 
 

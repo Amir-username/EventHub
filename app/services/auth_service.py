@@ -10,18 +10,23 @@ from app.core.security import (
     verify_password,
 )
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import TokenPair, UserLogin
+from app.schemas.auth import TokenPair, UserLogin, UserRegister
 
 
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.repo = UserRepository(db)
 
-    async def register(self, email: str, password: str, full_name: str | None = None):
-        hashed = hash_password(password)
-        return await self.repo.create(
-            email=email, hashed_password=hashed, full_name=full_name
-        )
+    async def register(self, credentials: UserRegister):
+        if credentials.password == credentials.confirm_pass:
+            hashed = hash_password(credentials.password)
+            return await self.repo.create(
+                email=credentials.email,
+                hashed_password=hashed,
+                full_name=credentials.full_name,
+            )
+        else:
+            raise ValueError("The password confirmation does not match.")
 
     async def login(self, credentials: UserLogin) -> TokenPair:
         user = await self.repo.get_by_email(credentials.email)

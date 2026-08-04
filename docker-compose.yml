@@ -12,6 +12,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/eventhub
       - REDIS_URL=redis://redis:6379/0
+      - KEYS_DIR=/run/secrets
     volumes:
       - .:/app                # project root → /app
       - /app/.venv 
@@ -85,3 +86,9 @@ volumes:
 networks:
   eventhub-network:
     driver: bridge
+
+secrets:
+  private_key:
+    file: ./keys/private_key.pem
+  public_key:
+    file: ./keys/public_key.pem
