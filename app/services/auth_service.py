@@ -18,20 +18,21 @@ class AuthService:
         self.repo = UserRepository(db)
 
     async def register(self, credentials: UserRegister):
-        if credentials.password == credentials.confirm_pass:
-            hashed = hash_password(credentials.password)
-            return await self.repo.create(
-                email=credentials.email,
-                hashed_password=hashed,
-                full_name=credentials.full_name,
-            )
-        else:
-            raise ValueError("The password confirmation does not match.")
+        user = await self.repo.get_by_email(credentials.email)
+        if user:
+            raise ValueError("email already exists")
+
+        hashed = hash_password(credentials.password)
+        return await self.repo.create(
+            email=credentials.email,
+            hashed_password=hashed,
+            full_name=credentials.full_name,
+        )
 
     async def login(self, credentials: UserLogin) -> TokenPair:
         user = await self.repo.get_by_email(credentials.email)
         if not user or not verify_password(credentials.password, user.hashed_password):
-            raise ValueError("Invalid credentials")
+            raise ValueError("Invalid email or password")
 
         if needs_rehash(user.hashed_password):
             user.hashed_password = hash_password(credentials.password)

@@ -53,7 +53,7 @@ def create_refresh_token(
 ) -> str:
     to_encode = data.copy()
     to_encode["type"] = "refresh"
-    expire = datetime.now(UTC) + (expires_delta or timedelta(days=7))
+    expire = datetime.now(UTC) + (expires_delta or timedelta(days=4))
     to_encode.update({"exp": expire, "iat": datetime.now(UTC)})
     return jwt.encode(to_encode, _load_private_key(), algorithm="RS256")
 
