@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import admin_users, auth
+from app.api import admin_users, auth, event
 from app.config import Settings
 
 
@@ -20,4 +20,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Register routers
     app.include_router(auth.router)
     app.include_router(admin_users.router)
+    app.include_router(event.router)
     return app
