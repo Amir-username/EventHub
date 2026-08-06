@@ -219,3 +219,4 @@ __marimo__/
 
 *.pem
 scripts/*.pem
+.scripts

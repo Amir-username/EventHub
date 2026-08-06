@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -15,6 +16,23 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=TokenPair)
 async def login(credentials: UserLogin, db: Annotated[AsyncSession, Depends(get_db)]):
     service = AuthService(db)
+    try:
+        return await service.login(credentials)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+
+
+@router.post("/token", response_model=TokenPair)
+async def token(
+    form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """OAuth2-compatible token endpoint for Swagger Authorize button.
+
+    The 'username' field in the form is treated as email.
+    """
+    service = AuthService(db)
+    credentials = UserLogin(email=form.username, password=form.password)
     try:
         return await service.login(credentials)
     except ValueError as e:
