@@ -23,9 +23,9 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.get("/public", response_model=PaginatedEvents)
 async def list_public_events(
     db: Annotated[AsyncSession, Depends(get_db)],
-    offset: Annotated[int, Query(0, ge=0)],
-    limit: Annotated[int, Query(20, ge=1, le=100)],
-    search: Annotated[str, Query(None, max_length=255)],
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    search: str = Query(None, max_length=255),
 ):
     service = EventService(db)
     events, total = await service.list_public(offset=offset, limit=limit, search=search)
