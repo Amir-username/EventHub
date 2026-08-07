@@ -7,12 +7,21 @@ from app.repositories.event_repository import EventRepository
 from app.schemas.event import EventCreate, EventUpdate
 
 
+def _parse_event_status(value: str) -> EventStatus:
+    """Parse event status with a clear error on invalid values."""
+    try:
+        return EventStatus(value)
+    except ValueError:
+        valid = [s.value for s in EventStatus]
+        raise ValueError(
+            f"Invalid status '{value}'. Must be one of: {', '.join(valid)}"
+        )
+
+
 class EventService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = EventRepository(db)
-
-    # ── Public reads ───────────────────────────────────────────────
 
     async def list_public(
         self,
@@ -30,8 +39,6 @@ class EventService:
         if event.status != EventStatus.PUBLISHED:
             raise ValueError("Event not found")
         return event
-
-    # ── Admin reads ────────────────────────────────────────────────
 
     async def list_all(
         self,
@@ -51,8 +58,6 @@ class EventService:
             raise ValueError("Event not found")
         return event
 
-    # ── Admin writes ───────────────────────────────────────────────
-
     async def create_event(self, data: EventCreate, created_by: int):
         if data.ends_at <= data.starts_at:
             raise ValueError("ends_at must be after starts_at")
@@ -64,7 +69,7 @@ class EventService:
         if not venue:
             raise ValueError("Venue not found")
 
-        status = EventStatus(data.status)
+        status = _parse_event_status(data.status)
         return await self.repo.create(
             venue_id=data.venue_id,
             title=data.title,
@@ -97,7 +102,7 @@ class EventService:
         if data.ends_at is not None:
             fields["ends_at"] = data.ends_at
         if data.status is not None:
-            fields["status"] = EventStatus(data.status)
+            fields["status"] = _parse_event_status(data.status)
 
         # Cross-field validation
         new_start = fields.get("starts_at", event.starts_at)

@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.auth import TokenPair, UserLogin, UserRead, UserRegister
+from app.schemas.auth import TokenPair, UserLogin, UserRegister
+from app.schemas.user import UserRead
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,7 +40,7 @@ async def token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
 
-@router.post("/register")
+@router.post("/register", response_model=UserRead)
 async def register(
     credentials: UserRegister, db: Annotated[AsyncSession, Depends(get_db)]
 ):
@@ -47,9 +48,12 @@ async def register(
     try:
         return await service.register(credentials)
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+        status_code = (
+            status.HTTP_409_CONFLICT
+            if "already exists" in str(e).lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.post("/refresh", response_model=TokenPair)

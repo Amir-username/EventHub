@@ -23,12 +23,12 @@ class PaginatedUsers(BaseModel):
 class AdminUserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    full_name: str | None = None
+    full_name: str | None = Field(default=None, min_length=1)
     role: str = "customer"
 
 
 class AdminUserUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = Field(default=None, min_length=8)
-    full_name: str | None = None
+    full_name: str | None = Field(default=None, min_length=1)
     role: str | None = None

@@ -6,6 +6,15 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.user import AdminUserCreate, AdminUserUpdate
 
 
+def _parse_user_role(value: str) -> UserRole:
+    """Parse user role with a clear error on invalid values."""
+    try:
+        return UserRole(value)
+    except ValueError:
+        valid = [r.value for r in UserRole]
+        raise ValueError(f"Invalid role '{value}'. Must be one of: {', '.join(valid)}")
+
+
 class AdminUserService:
     def __init__(self, db: AsyncSession):
         self.repo = UserRepository(db)
@@ -33,7 +42,7 @@ class AdminUserService:
         if existing:
             raise ValueError("Email already exists")
 
-        role = UserRole(data.role)
+        role = _parse_user_role(data.role)
         hashed = hash_password(data.password)
         return await self.repo.create(
             email=data.email,
@@ -58,7 +67,7 @@ class AdminUserService:
         if data.full_name is not None:
             fields["full_name"] = data.full_name
         if data.role is not None:
-            fields["role"] = UserRole(data.role)
+            fields["role"] = _parse_user_role(data.role)
 
         return await self.repo.update(user, **fields)
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class UserRegister(BaseModel):
-    full_name: str
+    full_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     confirm_pass: str
@@ -32,12 +32,3 @@ class TokenPayload(BaseModel):
     email: str | None = None
     role: str | None = None
     type: str | None = None
-
-
-class UserRead(BaseModel):
-    id: int
-    email: str
-    full_name: str | None
-    role: str
-
-    model_config = {"from_attributes": True}
