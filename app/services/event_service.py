@@ -9,6 +9,7 @@ from app.schemas.event import EventCreate, EventUpdate
 
 class EventService:
     def __init__(self, db: AsyncSession):
+        self.db = db
         self.repo = EventRepository(db)
 
     # ── Public reads ───────────────────────────────────────────────

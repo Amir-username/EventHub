@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import admin_users, auth, events, venues
+from app.api import admin_users, auth, events, ticket_types, venues
 from app.config import Settings
 
 
@@ -22,4 +22,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_users.router)
     app.include_router(events.router)
     app.include_router(venues.router)
+    app.include_router(ticket_types.router)
     return app
