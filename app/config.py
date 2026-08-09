@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Environment
+    environment: str = "production"
+
+    # CORS
+    cors_origins: list[str] = ["*"]
+
     # Security
     secret_key: str
     access_token_expire_minutes: int = 30
