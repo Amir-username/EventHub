@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.api import admin_users, auth, events, ticket_types, venues
 from app.config import Settings
@@ -22,6 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Register middlewares
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(TimingMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # Register routers
     app.include_router(auth.router)
