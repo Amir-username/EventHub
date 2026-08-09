@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api import admin_users, auth, events, ticket_types, venues
 from app.config import Settings
 from app.middleware.request_id import RequestIDMiddleware
+from app.middleware.timing import TimingMiddleware
 
 
 @asynccontextmanager
@@ -20,6 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Register middlewares
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(TimingMiddleware)
 
     # Register routers
     app.include_router(auth.router)
