@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # External APIs
     api_key: str | None = None
 
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_max_requests: int = 100
+    rate_limit_window_seconds: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -6,6 +6,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from app.api import admin_users, auth, events, ticket_types, venues
 from app.config import Settings
+from app.middleware.rate_limit import InMemoryRateLimitBackend, RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.timing import TimingMiddleware
 
@@ -47,6 +48,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(TimingMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(CORSMiddleware, **_cors_kwargs(settings))
+    app.add_middleware(
+        RateLimitMiddleware,
+        backend=InMemoryRateLimitBackend(),
+        max_requests=settings.rate_limit_max_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+        enabled=settings.rate_limit_enabled,
+    )
 
     # Register routers
     app.include_router(auth.router)
