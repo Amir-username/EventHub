@@ -1,202 +1,335 @@
-"""Shared test configuration and fixtures for all test types.
+"""Unit tests for EventService business logic.
 
-This file is loaded automatically by pytest for every test directory.
+Tests validation rules (ends_at > starts_at, venue existence, status parsing)
+and CRUD operations through the service layer.
 """
 
-import itertools
-import os
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import Base
+from app.models.event import EventStatus
+from app.models.user import UserRole
+from app.schemas.event import EventCreate, EventUpdate
+from app.services.event_service import EventService
 
-# ── Ensure RSA keys exist for JWT token creation in tests ───────────
-# The security module loads keys from files on import. We generate
-# temporary keys before any test imports security.py.
+# ── Create Event ─────────────────────────────────────────────────────
 
-_scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
-_private_key_path = os.path.join(_scripts_dir, "private_key.pem")
-_public_key_path = os.path.join(_scripts_dir, "public_key.pem")
 
-if not os.path.exists(_private_key_path) or not os.path.exists(_public_key_path):
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
+async def test_create_event_success(
+    db_session: AsyncSession, user_factory, venue_factory
+):
+    admin = await user_factory(role=UserRole.ADMIN)
+    venue = await venue_factory(created_by=admin.id)
 
-    _key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    os.makedirs(_scripts_dir, exist_ok=True)
-    with open(_private_key_path, "wb") as f:
-        f.write(
-            _key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
+    svc = EventService(db_session)
+    starts = datetime.now(UTC) + timedelta(days=1)
+    ends = starts + timedelta(hours=2)
+
+    event = await svc.create_event(
+        EventCreate(
+            title="Test Concert",
+            description="A great show",
+            venue_id=venue.id,
+            starts_at=starts,
+            ends_at=ends,
+            status="published",
+        ),
+        created_by=admin.id,
+    )
+
+    assert event.id is not None
+    assert event.title == "Test Concert"
+    assert event.status == EventStatus.PUBLISHED
+
+
+async def test_create_event_rejects_ends_before_starts(
+    db_session: AsyncSession, user_factory, venue_factory
+):
+    admin = await user_factory(role=UserRole.ADMIN)
+    venue = await venue_factory(created_by=admin.id)
+
+    svc = EventService(db_session)
+    starts = datetime.now(UTC) + timedelta(days=1)
+    ends = starts - timedelta(hours=1)  # INVALID
+
+    with pytest.raises(ValueError, match="ends_at must be after starts_at"):
+        await svc.create_event(
+            EventCreate(
+                title="Bad Event",
+                description="Invalid times",
+                venue_id=venue.id,
+                starts_at=starts,
+                ends_at=ends,
+                status="draft",
+            ),
+            created_by=admin.id,
         )
-    with open(_public_key_path, "wb") as f:
-        f.write(
-            _key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
+
+
+async def test_create_event_rejects_nonexistent_venue(
+    db_session: AsyncSession, user_factory
+):
+    admin = await user_factory(role=UserRole.ADMIN)
+
+    svc = EventService(db_session)
+    starts = datetime.now(UTC) + timedelta(days=1)
+    ends = starts + timedelta(hours=2)
+
+    with pytest.raises(ValueError, match="Venue not found"):
+        await svc.create_event(
+            EventCreate(
+                title="No Venue",
+                description="No venue attached",
+                venue_id=9999,
+                starts_at=starts,
+                ends_at=ends,
+                status="draft",
+            ),
+            created_by=admin.id,
         )
 
 
-# ── In-memory SQLite engine for tests ───────────────────────────────
-# In-memory SQLite is fast and requires no external services.
-
-TestEngine = create_async_engine(
-    "sqlite+aiosqlite:///:memory:",
-    echo=False,
-)
-
-TestSessionLocal = async_sessionmaker(
-    TestEngine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False,
-)
+# ── Get Event ────────────────────────────────────────────────────────
 
 
-# ── Per-test database isolation ─────────────────────────────────────
-# Each test gets a fresh in-memory database (create_all → test → drop_all).
-# This is fast with SQLite in-memory and guarantees full isolation.
+async def test_get_public_event_success(db_session: AsyncSession, event_factory):
+    event = await event_factory(status=EventStatus.PUBLISHED)
+
+    svc = EventService(db_session)
+    result = await svc.get_public(event.id)
+
+    assert result.id == event.id
+    assert result.title == event.title
 
 
-@pytest_asyncio.fixture()
-async def db_session():
-    """Provide a fresh database session with all tables created.
+async def test_get_public_event_rejects_draft(db_session: AsyncSession, event_factory):
+    event = await event_factory(status=EventStatus.DRAFT)
 
-    The entire database is dropped and recreated for each test,
-    guaranteeing full isolation. This is fast with in-memory SQLite.
-
-    Usage:
-        async def test_something(db_session):
-            service = MyService(db_session)
-            result = await service.do_thing()
-            assert result is not None
-    """
-    async with TestEngine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with TestSessionLocal() as session:
-        yield session
-
-    async with TestEngine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.get_public(event.id)
 
 
-# ── Factory fixtures for creating test objects ─────────────────────
+async def test_get_public_event_rejects_nonexistent(db_session: AsyncSession):
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.get_public(9999)
 
 
-@pytest_asyncio.fixture()
-async def user_factory(db_session: AsyncSession):
-    """Factory to create User records without going through AuthService.
+# ── Update Event ─────────────────────────────────────────────────────
 
-    Usage:
-        user = await user_factory(email="a@b.com", role=UserRole.ADMIN)
-    """
-    from app.models.user import User, UserRole
 
-    _counter = itertools.count(1)
+async def test_update_event_title(db_session: AsyncSession, event_factory):
+    event = await event_factory(title="Old Title")
 
-    async def _create(
-        email: str | None = None,
-        hashed_password: str = "dummy_hash",
-        full_name: str = "Test User",
-        role: UserRole = UserRole.CUSTOMER,
-    ) -> User:
-        user = User(
-            email=email or f"user-{next(_counter)}@test.example.com",
-            hashed_password=hashed_password,
-            full_name=full_name,
-            role=role,
+    svc = EventService(db_session)
+    updated = await svc.update_event(event.id, EventUpdate(title="New Title"))
+
+    assert updated.title == "New Title"
+
+
+async def test_update_event_rejects_invalid_status(
+    db_session: AsyncSession, event_factory
+):
+    event = await event_factory()
+
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Invalid status"):
+        await svc.update_event(event.id, EventUpdate(status="nonexistent_status"))
+
+
+# ── Delete Event ─────────────────────────────────────────────────────
+
+
+async def test_delete_event_success(db_session: AsyncSession, event_factory):
+    event = await event_factory()
+
+    svc = EventService(db_session)
+    await svc.delete_event(event.id)
+
+    # Verify it's gone
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.get_event(event.id)
+
+
+async def test_delete_event_rejects_nonexistent(db_session: AsyncSession):
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.delete_event(9999)
+
+
+# ── List ─────────────────────────────────────────────────────────────
+
+
+async def test_list_public_only_returns_published(
+    db_session: AsyncSession, event_factory
+):
+    await event_factory(title="Published Event", status=EventStatus.PUBLISHED)
+    await event_factory(title="Draft Event", status=EventStatus.DRAFT)
+
+    svc = EventService(db_session)
+    items, total = await svc.list_public()
+
+    assert total == 1
+    assert items[0].title == "Published Event"
+
+
+async def test_list_all_includes_drafts_for_admin(
+    db_session: AsyncSession, event_factory
+):
+    await event_factory(title="Published Event", status=EventStatus.PUBLISHED)
+    await event_factory(title="Draft Event", status=EventStatus.DRAFT)
+
+    svc = EventService(db_session)
+    _items, total = await svc.list_all()
+
+    assert total == 2
+
+
+async def test_create_event_rejects_equal_starts_and_ends(
+    db_session: AsyncSession, user_factory, venue_factory
+):
+    """ends_at == starts_at should also be rejected (code uses <=)."""
+    admin = await user_factory(role=UserRole.ADMIN)
+    venue = await venue_factory(created_by=admin.id)
+
+    svc = EventService(db_session)
+    moment = datetime.now(UTC) + timedelta(days=1)
+
+    with pytest.raises(ValueError, match="ends_at must be after starts_at"):
+        await svc.create_event(
+            EventCreate(
+                title="Same Time",
+                venue_id=venue.id,
+                starts_at=moment,
+                ends_at=moment,
+                status="draft",
+            ),
+            created_by=admin.id,
         )
-        db_session.add(user)
-        await db_session.flush()
-        return user
-
-    return _create
 
 
-@pytest_asyncio.fixture()
-async def venue_factory(db_session: AsyncSession, user_factory):
-    """Factory to create Venue records.
+async def test_create_event_default_status_is_draft(
+    db_session: AsyncSession, user_factory, venue_factory
+):
+    """When status is not provided, it defaults to 'draft'."""
+    admin = await user_factory(role=UserRole.ADMIN)
+    venue = await venue_factory(created_by=admin.id)
 
-    Usage:
-        venue = await venue_factory(name="Test Hall")
-    """
-    from app.models.venue import Venue
+    svc = EventService(db_session)
+    starts = datetime.now(UTC) + timedelta(days=1)
+    ends = starts + timedelta(hours=2)
 
-    async def _create(
-        name: str = "Test Venue",
-        address: str = "123 Test St",
-        city: str = "Test City",
-        capacity: int = 100,
-        created_by: int | None = None,
-    ) -> Venue:
-        if created_by is None:
-            creator = await user_factory()
-            created_by = creator.id
-        venue = Venue(
-            name=name,
-            address=address,
-            city=city,
-            capacity=capacity,
-            created_by=created_by,
+    event = await svc.create_event(
+        EventCreate(
+            title="No Status",
+            venue_id=venue.id,
+            starts_at=starts,
+            ends_at=ends,
+            # status omitted — defaults to "draft"
+        ),
+        created_by=admin.id,
+    )
+
+    assert event.status == EventStatus.DRAFT
+
+
+async def test_update_event_venue_to_nonexistent(
+    db_session: AsyncSession, event_factory
+):
+    """Changing venue_id to a non-existent venue should fail."""
+    event = await event_factory()
+
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Venue not found"):
+        await svc.update_event(event.id, EventUpdate(venue_id=9999))
+
+
+async def test_update_event_cross_field_time_validation(
+    db_session: AsyncSession, event_factory
+):
+    """Changing only ends_at to before the existing starts_at should fail."""
+    now = datetime.now(UTC)
+    event = await event_factory(
+        starts_at=now + timedelta(days=5),
+        ends_at=now + timedelta(days=7),
+    )
+
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="ends_at must be after starts_at"):
+        await svc.update_event(
+            event.id,
+            EventUpdate(ends_at=now + timedelta(days=3)),
         )
-        db_session.add(venue)
-        await db_session.flush()
-        return venue
-
-    return _create
 
 
-@pytest_asyncio.fixture()
-async def event_factory(db_session: AsyncSession, user_factory, venue_factory):
-    """Factory to create Event records.
+async def test_update_event_none_fields_ignored(
+    db_session: AsyncSession, event_factory
+):
+    """Sending all-None update should not change anything."""
+    event = await event_factory(title="Stable", description="Original")
 
-    Usage:
-        event = await event_factory(title="Test Concert")
-    """
-    from datetime import datetime, timedelta
+    svc = EventService(db_session)
+    updated = await svc.update_event(event.id, EventUpdate())
 
-    from app.models.event import Event, EventStatus
+    assert updated.title == "Stable"
+    assert updated.description == "Original"
 
-    async def _create(
-        title: str = "Test Event",
-        description: str = "A test event",
-        venue_id: int | None = None,
-        created_by: int | None = None,
-        starts_at: datetime | None = None,
-        ends_at: datetime | None = None,
-        status: EventStatus = EventStatus.PUBLISHED,
-    ) -> Event:
-        now = datetime.now(UTC)
-        if starts_at is None:
-            starts_at = now + timedelta(days=1)
-        if ends_at is None:
-            ends_at = starts_at + timedelta(hours=2)
-        if venue_id is None:
-            venue = await venue_factory()
-            venue_id = venue.id
-        if created_by is None:
-            creator = await user_factory()
-            created_by = creator.id
 
-        event = Event(
-            title=title,
-            description=description,
-            venue_id=venue_id,
-            created_by=created_by,
-            starts_at=starts_at,
-            ends_at=ends_at,
-            status=status,
-        )
-        db_session.add(event)
-        await db_session.flush()
-        return event
+async def test_update_event_rejects_nonexistent(db_session: AsyncSession):
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.update_event(9999, EventUpdate(title="X"))
 
-    return _create
+
+async def test_get_event_success(db_session: AsyncSession, event_factory):
+    event = await event_factory(status=EventStatus.DRAFT)
+
+    svc = EventService(db_session)
+    result = await svc.get_event(event.id)
+
+    assert result.id == event.id
+    # Admin get_event returns drafts too
+    assert result.status == EventStatus.DRAFT
+
+
+async def test_get_event_rejects_nonexistent(db_session: AsyncSession):
+    svc = EventService(db_session)
+    with pytest.raises(ValueError, match="Event not found"):
+        await svc.get_event(9999)
+
+
+async def test_list_all_filter_by_status(db_session: AsyncSession, event_factory):
+    await event_factory(title="Pub A", status=EventStatus.PUBLISHED)
+    await event_factory(title="Pub B", status=EventStatus.PUBLISHED)
+    await event_factory(title="Draft", status=EventStatus.DRAFT)
+
+    svc = EventService(db_session)
+    items, total = await svc.list_all(status=EventStatus.DRAFT)
+
+    assert total == 1
+    assert items[0].title == "Draft"
+
+
+async def test_list_public_search(db_session: AsyncSession, event_factory):
+    await event_factory(title="Summer Jazz Night", status=EventStatus.PUBLISHED)
+    await event_factory(title="Winter Rock Show", status=EventStatus.PUBLISHED)
+
+    svc = EventService(db_session)
+    items, total = await svc.list_public(search="Jazz")
+
+    assert total == 1
+    assert items[0].title == "Summer Jazz Night"
+
+
+async def test_list_pagination(db_session: AsyncSession, event_factory):
+    for i in range(5):
+        await event_factory(title=f"Event {i}", status=EventStatus.PUBLISHED)
+
+    svc = EventService(db_session)
+    items, total = await svc.list_public(offset=2, limit=2)
+
+    assert total == 5
+    assert len(items) == 2
