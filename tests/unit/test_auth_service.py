@@ -127,3 +127,71 @@ async def test_refresh_rejects_access_token_used_as_refresh(
 
     with pytest.raises(ValueError, match="Invalid refresh token"):
         await svc.refresh(access_token)
+
+
+async def test_refresh_rejects_expired_token(db_session: AsyncSession):
+    """An expired refresh token should be caught as Invalid refresh token."""
+    from datetime import timedelta
+
+    from app.core.security import create_refresh_token
+
+    # Create a token that's already expired
+    expired = create_refresh_token(
+        data={"sub": "1"}, expires_delta=timedelta(seconds=-1)
+    )
+
+    svc = AuthService(db_session)
+    with pytest.raises(ValueError, match="Invalid refresh token"):
+        await svc.refresh(expired)
+
+
+async def test_refresh_rejects_deleted_user(db_session: AsyncSession, user_factory):
+    """If the user was deleted after the token was issued, refresh should fail."""
+    user = await user_factory(email="gone@example.com")
+
+    from app.core.security import create_refresh_token
+
+    token = create_refresh_token(data={"sub": str(user.id)})
+
+    # Delete the user using the repository (proper async delete)
+    from app.repositories.user_repository import UserRepository
+
+    repo = UserRepository(db_session)
+    await repo.delete(user)
+
+    svc = AuthService(db_session)
+    with pytest.raises(ValueError, match="User not found"):
+        await svc.refresh(token)
+
+
+async def test_refresh_rejects_token_missing_sub(db_session: AsyncSession):
+    """A token without 'sub' claim should cause ValueError."""
+    from app.core.security import create_refresh_token
+
+    token = create_refresh_token(data={"email": "no-sub@test.com"})
+
+    svc = AuthService(db_session)
+    with pytest.raises(ValueError, match="Invalid refresh token"):
+        await svc.refresh(token)
+
+
+async def test_refresh_returns_valid_token_pair(db_session: AsyncSession, user_factory):
+    """Refreshed tokens are valid and correctly typed."""
+    user = await user_factory(email="rotate@example.com")
+
+    from app.core.security import create_refresh_token, decode_token
+
+    token1 = create_refresh_token(data={"sub": str(user.id)})
+
+    svc = AuthService(db_session)
+    pair = await svc.refresh(token1)
+
+    # Decode and verify the tokens
+    access_payload = decode_token(pair.access_token)
+    refresh_payload = decode_token(pair.refresh_token)
+
+    assert access_payload["type"] == "access"
+    assert refresh_payload["type"] == "refresh"
+    assert access_payload["sub"] == str(user.id)
+    assert refresh_payload["sub"] == str(user.id)
+    assert access_payload["email"] == "rotate@example.com"
