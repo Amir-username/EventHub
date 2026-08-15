@@ -209,3 +209,54 @@ async def event_factory(db_session: AsyncSession, user_factory, venue_factory):
         return event
 
     return _create
+
+
+@pytest_asyncio.fixture()
+async def ticket_type_factory(db_session: AsyncSession, event_factory):
+    """Factory to create TicketType records.
+
+    Usage:
+        tt = await ticket_type_factory(name="VIP", price_cents=15000)
+    """
+    from datetime import datetime, timedelta
+
+    from app.models.ticket_type import TicketType
+
+    _counter = itertools.count(1)
+
+    async def _create(
+        event_id: int | None = None,
+        name: str | None = None,
+        price_cents: int = 10000,
+        currency: str = "USD",
+        total_quantity: int = 100,
+        sales_start_at: datetime | None = None,
+        sales_end_at: datetime | None = None,
+    ) -> TicketType:
+        now = datetime.now(UTC)
+        if sales_start_at is None:
+            sales_start_at = now - timedelta(days=1)
+        if sales_end_at is None:
+            sales_end_at = now + timedelta(days=30)
+        if event_id is None:
+            event = await event_factory()
+            event_id = event.id
+        if name is None:
+            name = f"TicketType-{next(_counter)}"
+
+        tt = TicketType(
+            event_id=event_id,
+            name=name,
+            price_cents=price_cents,
+            currency=currency,
+            total_quantity=total_quantity,
+            reserved_quantity=0,
+            sold_quantity=0,
+            sales_start_at=sales_start_at,
+            sales_end_at=sales_end_at,
+        )
+        db_session.add(tt)
+        await db_session.flush()
+        return tt
+
+    return _create
