@@ -10,12 +10,14 @@ dependencies = [
     "asyncpg>=0.31.0",
     "cryptography>=50.0.0",
     "fastapi[standard]>=0.141.0",
+    "httpx>=0.28.1",
     "pre-commit>=4.6.1",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
     "python-dotenv>=1.2.2",
     "ruff>=0.16.0",
     "sqlalchemy>=2.0.51",
+    "testcontainers[postgres]>=4.15.0",
 ]
 
 [dependency-groups]
