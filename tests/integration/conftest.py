@@ -1,21 +1,32 @@
-"""Integration test configuration — PostgreSQL testcontainer + full FastAPI app.
+# /**
+#  * Integration test configuration — PostgreSQL testcontainer + full FastAPI app.
+#  *
+#  * These tests exercise the complete HTTP request lifecycle through real PostgreSQL.
+#  * They require Docker to be running (for the testcontainer).
+#  *
+#  * Run with:
+#  *     pytest tests/integration/ -v
+#  *
+#  * Unit tests (tests/unit/) use in-memory SQLite and do NOT need Docker.
+#  *
+#  * Architecture note:
+#  *   All fixtures here are synchronous (plain @pytest.fixture).
+#  *   Async operations (table creation, truncation, user seeding) run inside
+#  *   asyncio.run() so they don't conflict with TestClient's internal loop.
+#  *   TestClient manages its own event loop — having pytest-asyncio fixtures
+#  *   on a *different* loop causes "Future attached to a different loop" errors
+#  *   with asyncpg connection pools.
+#  */
 
-These tests exercise the complete HTTP request lifecycle through real PostgreSQL.
-They require Docker to be running (for the testcontainer).
-
-Run with:
-    pytest tests/integration/ -v
-
-Unit tests (tests/unit/) use in-memory SQLite and do NOT need Docker.
-"""
-
+import asyncio
 import os
 import subprocess
-from collections.abc import AsyncGenerator
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# ── Disable Ryuk (testcontainers cleanup container) to avoid port 8080 conflicts ──
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 # ── Override env BEFORE any app import ───────────────────────────────
 os.environ["SECRET_KEY"] = "test-secret-key-for-integration-tests"
@@ -56,12 +67,12 @@ def pytest_collection_modifyitems(session, config, items):
                 )
 
 
-# ── Session-scoped PostgreSQL container ───────────────────────────────
+# ── Session-scoped: PostgreSQL container ─────────────────────────────
 # One container for the entire test session. This adds ~5-10s startup
 # but avoids per-test container overhead.
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest.fixture(scope="session")
 def pg_container():
     """Start a PostgreSQL 17 container; yield the container object."""
     from testcontainers.community.postgres import PostgresContainer
@@ -70,77 +81,66 @@ def pg_container():
         yield pg
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest.fixture(scope="session")
 def pg_url(pg_container) -> str:
     """Return the asyncpg URL for the test container."""
     url = pg_container.get_connection_url()
     return url.replace("psycopg2", "asyncpg")
 
 
-@pytest_asyncio.fixture(scope="session")
-async def pg_engine(pg_url: str):
-    """Create an async engine against the PostgreSQL test container.
-
-    Creates all tables once. Drops them at session end.
-    """
-
-    engine = create_async_engine(pg_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+# ── Session-scoped: create / drop tables ─────────────────────────────
+# Runs asynchronously via asyncio.run() so no pytest-asyncio loop
+# conflicts with TestClient's internal loop.
 
 
-@pytest_asyncio.fixture(scope="session")
-def pg_session_factory(pg_engine):
-    """Session factory bound to the test PostgreSQL engine."""
-    from sqlalchemy.ext.asyncio import AsyncSession
+@pytest.fixture(scope="session")
+def pg_setup(pg_url):
+    """Create all tables once at session start; drop them at session end."""
 
-    return async_sessionmaker(
-        pg_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-        autocommit=False,
-    )
+    async def _create_tables():
+        engine = create_async_engine(pg_url, echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
 
+    asyncio.run(_create_tables())
+    yield  # ── tests run here ──
 
-# ── Per-test session with table truncation ───────────────────────────
-# Truncating all rows is much faster than drop_all/create_all per test
-# while still providing full data isolation.
+    async def _drop_tables():
+        engine = create_async_engine(pg_url, echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
 
-
-@pytest_asyncio.fixture()
-async def db_session(
-    pg_engine,
-    pg_session_factory,
-) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a clean database session for each test.
-
-    Truncates all tables in reverse dependency order before yielding.
-    Commits after setup so the test starts with a clean slate.
-    """
-
-    async with pg_engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(table.delete())
-        await conn.commit()
-
-    async with pg_session_factory() as session:
-        yield session
-        await session.rollback()
+    asyncio.run(_drop_tables())
 
 
-# ── FastAPI app + TestClient ─────────────────────────────────────────
+# ── Per-test: truncate all tables ───────────────────────────────────
+# Runs before token fixtures and app_client so every test starts clean.
 
 
-@pytest_asyncio.fixture()
-async def app_client(db_session: AsyncSession):
+@pytest.fixture()
+def clean_db(pg_setup, pg_url):
+    """Truncate all tables in reverse dependency order for test isolation."""
+
+    async def _truncate():
+        engine = create_async_engine(pg_url, echo=False)
+        async with engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                await conn.execute(table.delete())
+        await engine.dispose()
+
+    asyncio.run(_truncate())
+
+
+# ── Per-test: FastAPI app + TestClient ─────────────────────────────
+# The get_db override is an async generator that TestClient's internal
+# loop calls.  The engine is created synchronously here; its connection
+# pool lazily binds to TestClient's loop on first use — no loop conflict.
+
+
+@pytest.fixture()
+def app_client(clean_db, pg_url):
     """Full FastAPI app with get_db overridden to use the PG test session."""
     from app import config
 
@@ -153,8 +153,23 @@ async def app_client(db_session: AsyncSession):
         database_url="postgresql+asyncpg://unused",
     )
 
+    # create_async_engine is synchronous — no loop needed yet.
+    # The pool binds to TestClient's loop on first actual connection.
+    engine = create_async_engine(pg_url, echo=False)
+    factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    async def override_get_db():
+        async with factory() as session:
+            yield session
+
     app = create_app(settings=settings)
-    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_db] = override_get_db
 
     from starlette.testclient import TestClient
 
@@ -163,49 +178,91 @@ async def app_client(db_session: AsyncSession):
 
     app.dependency_overrides.clear()
     config.get_settings.cache_clear()
+    asyncio.run(engine.dispose())
 
 
-# ── Auth token helpers ──────────────────────────────────────────────
+# ── Auth token fixtures ──────────────────────────────────────────────
+# These insert users directly via raw SQL (committed) so the data is
+# visible to TestClient's separate connection.  Uses asyncio.run() to
+# avoid loop conflicts.
 
 
-@pytest_asyncio.fixture()
-async def admin_token(db_session: AsyncSession) -> str:
-    """Create an admin user and return a valid access token."""
+@pytest.fixture()
+def admin_token(clean_db, pg_url) -> str:
+    """Create an admin user in PG and return a valid access token."""
+    from datetime import UTC, datetime
+
     from app.core.security import create_access_token, hash_password
-    from app.models.user import User, UserRole
 
-    user = User(
-        email="admin@integration.test",
-        hashed_password=hash_password("AdminPass1!"),
-        full_name="Integration Admin",
-        role=UserRole.ADMIN,
-    )
-    db_session.add(user)
-    await db_session.flush()
+    async def _create():
+        from sqlalchemy import insert
 
-    return create_access_token(
-        data={"sub": str(user.id), "email": user.email, "role": "admin"}
-    )
+        from app.models.user import User, UserRole
+
+        engine = create_async_engine(pg_url, echo=False)
+        async with engine.begin() as conn:
+            hashed = hash_password("AdminPass1!")
+            result = await conn.execute(
+                insert(User)
+                .values(
+                    email="admin@integration.test",
+                    hashed_password=hashed,
+                    full_name="Integration Admin",
+                    role=UserRole.ADMIN,
+                    created_at=datetime.now(UTC),
+                )
+                .returning(User.id)
+            )
+            user_id = result.scalar_one()
+        await engine.dispose()
+        return create_access_token(
+            data={
+                "sub": str(user_id),
+                "email": "admin@integration.test",
+                "role": "admin",
+            }
+        )
+
+    return asyncio.run(_create())
 
 
-@pytest_asyncio.fixture()
-async def customer_token(db_session: AsyncSession) -> str:
-    """Create a customer user and return a valid access token."""
+@pytest.fixture()
+def customer_token(clean_db, pg_url) -> str:
+    """Create a customer user in PG and return a valid access token."""
+    from datetime import UTC, datetime
+
     from app.core.security import create_access_token, hash_password
-    from app.models.user import User, UserRole
 
-    user = User(
-        email="customer@integration.test",
-        hashed_password=hash_password("CustomerPass1!"),
-        full_name="Integration Customer",
-        role=UserRole.CUSTOMER,
-    )
-    db_session.add(user)
-    await db_session.flush()
+    async def _create():
+        from sqlalchemy import insert
 
-    return create_access_token(
-        data={"sub": str(user.id), "email": user.email, "role": "customer"}
-    )
+        from app.models.user import User, UserRole
+
+        engine = create_async_engine(pg_url, echo=False)
+        async with engine.begin() as conn:
+            hashed = hash_password("CustomerPass1!")
+            result = await conn.execute(
+                insert(User)
+                .values(
+                    email="customer@integration.test",
+                    hashed_password=hashed,
+                    full_name="Integration Customer",
+                    role=UserRole.CUSTOMER,
+                    created_at=datetime.now(UTC),
+                )
+                .returning(User.id)
+            )
+            user_id = result.scalar_one()
+        await engine.dispose()
+        return create_access_token(
+            data={
+                "sub": str(user_id),
+                "email": "customer@integration.test",
+                "role": "customer",
+            }
+        )
+
+    return asyncio.run(_create())
 
 
 def auth_header(token: str) -> dict[str, str]:
