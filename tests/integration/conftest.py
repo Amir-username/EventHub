@@ -1,22 +1,20 @@
-# /**
-#  * Integration test configuration — PostgreSQL testcontainer + full FastAPI app.
-#  *
-#  * These tests exercise the complete HTTP request lifecycle through real PostgreSQL.
-#  * They require Docker to be running (for the testcontainer).
-#  *
-#  * Run with:
-#  *     pytest tests/integration/ -v
-#  *
-#  * Unit tests (tests/unit/) use in-memory SQLite and do NOT need Docker.
-#  *
-#  * Architecture note:
-#  *   All fixtures here are synchronous (plain @pytest.fixture).
-#  *   Async operations (table creation, truncation, user seeding) run inside
-#  *   asyncio.run() so they don't conflict with TestClient's internal loop.
-#  *   TestClient manages its own event loop — having pytest-asyncio fixtures
-#  *   on a *different* loop causes "Future attached to a different loop" errors
-#  *   with asyncpg connection pools.
-#  */
+# Integration test configuration -- PostgreSQL testcontainer + full FastAPI app.
+#
+# These tests exercise the complete HTTP request lifecycle through real PostgreSQL.
+# They require Docker to be running (for the testcontainer).
+#
+# Run with:
+#     pytest tests/integration/ -v
+#
+# Unit tests (tests/unit/) use in-memory SQLite and do NOT need Docker.
+#
+# Architecture note:
+#   All fixtures here are synchronous (plain @pytest.fixture).
+#   Async operations (table creation, truncation, user seeding) run inside
+#   asyncio.run() so they don't conflict with TestClient's internal loop.
+#   TestClient manages its own event loop -- having pytest-asyncio fixtures
+#   on a *different* loop causes "Future attached to a different loop" errors
+#   with asyncpg connection pools.
 
 import asyncio
 import os
@@ -166,7 +164,11 @@ def app_client(clean_db, pg_url):
 
     async def override_get_db():
         async with factory() as session:
-            yield session
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
 
     app = create_app(settings=settings)
     app.dependency_overrides[get_db] = override_get_db
@@ -178,7 +180,6 @@ def app_client(clean_db, pg_url):
 
     app.dependency_overrides.clear()
     config.get_settings.cache_clear()
-    asyncio.run(engine.dispose())
 
 
 # ── Auth token fixtures ──────────────────────────────────────────────
