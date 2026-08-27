@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     rate_limit_max_requests: int = 100
     rate_limit_window_seconds: int = 60
 
+    reservation_window_minutes: int = 10
+
 
 @lru_cache
 def get_settings() -> Settings:
