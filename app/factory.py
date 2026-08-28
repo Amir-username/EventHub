@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from app.api import admin_users, auth, events, ticket_types, venues
+from app.api import admin_users, auth, events, reservations, ticket_types, venues
 from app.config import Settings
 from app.middleware.rate_limit import InMemoryRateLimitBackend, RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -62,4 +62,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(events.router)
     app.include_router(venues.router)
     app.include_router(ticket_types.router)
+    app.include_router(reservations.router)
     return app
