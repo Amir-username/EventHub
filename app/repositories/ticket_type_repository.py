@@ -91,8 +91,7 @@ class TicketTypeRepository:
         )
         self.db.add(ticket_type)
         await self.db.commit()
-        await self.db.refresh(ticket_type)
-        return ticket_type
+        return await self.get_by_id(ticket_type.id)  # type: ignore[return-value]
 
     async def update(self, ticket_type: TicketType, **fields) -> TicketType:
         for key, value in fields.items():
@@ -100,8 +99,7 @@ class TicketTypeRepository:
                 setattr(ticket_type, key, value)
         self.db.add(ticket_type)
         await self.db.commit()
-        await self.db.refresh(ticket_type)
-        return ticket_type
+        return await self.get_by_id(ticket_type.id)  # type: ignore[return-value]
 
     async def delete(self, ticket_type: TicketType) -> None:
         await self.db.delete(ticket_type)

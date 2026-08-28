@@ -61,8 +61,7 @@ class VenueRepository:
         )
         self.db.add(venue)
         await self.db.commit()
-        await self.db.refresh(venue)
-        return venue
+        return await self.get_by_id(venue.id)  # type: ignore[return-value]
 
     async def update(self, venue: Venue, **fields) -> Venue:
         for key, value in fields.items():
@@ -70,8 +69,7 @@ class VenueRepository:
                 setattr(venue, key, value)
         self.db.add(venue)
         await self.db.commit()
-        await self.db.refresh(venue)
-        return venue
+        return await self.get_by_id(venue.id)  # type: ignore[return-value]
 
     async def delete(self, venue: Venue) -> None:
         await self.db.delete(venue)

@@ -104,8 +104,7 @@ class EventRepository:
         )
         self.db.add(event)
         await self.db.commit()
-        await self.db.refresh(event)
-        return event
+        return await self.get_by_id(event.id)  # type: ignore[return-value]
 
     async def update(self, event: Event, **fields) -> Event:
         for key, value in fields.items():
@@ -113,8 +112,7 @@ class EventRepository:
                 setattr(event, key, value)
         self.db.add(event)
         await self.db.commit()
-        await self.db.refresh(event)
-        return event
+        return await self.get_by_id(event.id)  # type: ignore[return-value]
 
     async def delete(self, event: Event) -> None:
         await self.db.delete(event)

@@ -194,8 +194,7 @@ class ReservationRepository:
         # commit flushes both the ticket_type UPDATE and the reservation
         # INSERT atomically, then releases the FOR UPDATE lock.
         await self.db.commit()
-        await self.db.refresh(reservation)
-        return reservation
+        return await self.get_by_id(reservation.id)  # type: ignore[return-value]
 
     async def cancel(self, reservation: Reservation) -> Reservation:
         """Cancel a pending reservation and release the held tickets.
@@ -223,8 +222,7 @@ class ReservationRepository:
 
         self.db.add(reservation)
         await self.db.commit()
-        await self.db.refresh(reservation)
-        return reservation
+        return await self.get_by_id(reservation.id)  # type: ignore[return-value]
 
     async def confirm(self, reservation: Reservation) -> Reservation:
         """Confirm a pending reservation (payment succeeded).
@@ -253,8 +251,7 @@ class ReservationRepository:
 
         self.db.add(reservation)
         await self.db.commit()
-        await self.db.refresh(reservation)
-        return reservation
+        return await self.get_by_id(reservation.id)  # type: ignore[return-value]
 
     async def expire(self, reservation: Reservation) -> Reservation:
         """Mark a pending reservation as expired and release the held tickets.
@@ -278,5 +275,4 @@ class ReservationRepository:
 
         self.db.add(reservation)
         await self.db.commit()
-        await self.db.refresh(reservation)
-        return reservation
+        return await self.get_by_id(reservation.id)  # type: ignore[return-value]
